@@ -2,8 +2,8 @@ services:
   execution-node:
     image: ethereum/client-go:stable
     volumes:
-      - ./data:/data:rw
-      - ./root/jwt.hex:/root/jwt.hex:ro
+      - Data:/data:rw
+      - Secret:/root:ro
     command: 
       --goerli
       --datadir="/data/Goerli"
@@ -24,9 +24,9 @@ services:
   beacon-node:
     image: gcr.io/prysmaticlabs/prysm/beacon-chain:stable
     volumes:
-      - ./data:/data:rw
-      - ./root/jwt.hex:/root/jwt.hex:ro
-      - ./certs:/usr/local/share/ca-certificates/:ro
+      - Data:/data:rw
+      - Secret:/root:ro
+      - Certs:/usr/local/share/ca-certificates:ro
     command:
       --accept-terms-of-use=true
       --datadir="/data/Goerli"
@@ -45,3 +45,8 @@ services:
     depends_on:
       execution-node:
         condition: service_started
+  
+volumes:
+  Data:
+  Secret:
+  Certs:

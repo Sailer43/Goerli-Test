@@ -1,0 +1,1007 @@
+AWSTemplateFormatVersion: 2010-09-09
+Resources:
+  BeaconnodeService:
+    DependsOn:
+    - BeaconnodeTCP4000Listener
+    - BeaconnodeTCP13000Listener
+    - BeaconnodeUDP12000Listener
+    - ExecutionnodeService
+    - DataNFSMountTargetOnSubnet0e3140051101a020b
+    - DataNFSMountTargetOnSubnet00ce207e2616ae5a6
+    - DataNFSMountTargetOnSubnet0d8473699c0e27e4f
+    - DataNFSMountTargetOnSubnet0e8361006605c1812
+    - DataNFSMountTargetOnSubnet028fe3013f4f9485a
+    - DataNFSMountTargetOnSubnet05b5dc67930c020e7
+    - SecretNFSMountTargetOnSubnet0e3140051101a020b
+    - SecretNFSMountTargetOnSubnet00ce207e2616ae5a6
+    - SecretNFSMountTargetOnSubnet0d8473699c0e27e4f
+    - SecretNFSMountTargetOnSubnet0e8361006605c1812
+    - SecretNFSMountTargetOnSubnet028fe3013f4f9485a
+    - SecretNFSMountTargetOnSubnet05b5dc67930c020e7
+    - CertsNFSMountTargetOnSubnet0e3140051101a020b
+    - CertsNFSMountTargetOnSubnet00ce207e2616ae5a6
+    - CertsNFSMountTargetOnSubnet0d8473699c0e27e4f
+    - CertsNFSMountTargetOnSubnet0e8361006605c1812
+    - CertsNFSMountTargetOnSubnet028fe3013f4f9485a
+    - CertsNFSMountTargetOnSubnet05b5dc67930c020e7
+    Properties:
+      Cluster:
+        Fn::GetAtt:
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+      - ContainerName: beacon-node
+        ContainerPort: 4000
+        TargetGroupArn:
+          Ref: BeaconnodeTCP4000TargetGroup
+      - ContainerName: beacon-node
+        ContainerPort: 13000
+        TargetGroupArn:
+          Ref: BeaconnodeTCP13000TargetGroup
+      - ContainerName: beacon-node
+        ContainerPort: 12000
+        TargetGroupArn:
+          Ref: BeaconnodeUDP12000TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: DefaultNetwork
+          Subnets:
+          - subnet-0e3140051101a020b
+          - subnet-00ce207e2616ae5a6
+          - subnet-0d8473699c0e27e4f
+          - subnet-0e8361006605c1812
+          - subnet-028fe3013f4f9485a
+          - subnet-05b5dc67930c020e7
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+      - RegistryArn:
+          Fn::GetAtt:
+          - BeaconnodeServiceDiscoveryEntry
+          - Arn
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.service
+        Value: beacon-node
+      TaskDefinition:
+        Ref: BeaconnodeTaskDefinition
+    Type: AWS::ECS::Service
+  BeaconnodeServiceDiscoveryEntry:
+    Properties:
+      Description: '"beacon-node" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+        - TTL: 60
+          Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: beacon-node
+      NamespaceId:
+        Ref: CloudMap
+    Type: AWS::ServiceDiscovery::Service
+  BeaconnodeTCP4000Listener:
+    Properties:
+      DefaultActions:
+      - ForwardConfig:
+          TargetGroups:
+          - TargetGroupArn:
+              Ref: BeaconnodeTCP4000TargetGroup
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 4000
+      Protocol: TCP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+  BeaconnodeTCP4000TargetGroup:
+    Properties:
+      Port: 4000
+      Protocol: TCP
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      TargetType: ip
+      VpcId: vpc-0b7985b42ef82c8cd
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  BeaconnodeTCP13000Listener:
+    Properties:
+      DefaultActions:
+      - ForwardConfig:
+          TargetGroups:
+          - TargetGroupArn:
+              Ref: BeaconnodeTCP13000TargetGroup
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 13000
+      Protocol: TCP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+  BeaconnodeTCP13000TargetGroup:
+    Properties:
+      Port: 13000
+      Protocol: TCP
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      TargetType: ip
+      VpcId: vpc-0b7985b42ef82c8cd
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  BeaconnodeTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+      - Command:
+        - us-east-1.compute.internal
+        - goerli-test.local
+        Essential: false
+        Image: docker/ecs-searchdomain-sidecar:1.0
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: goerli-test
+        Name: Beaconnode_ResolvConf_InitContainer
+      - Command:
+        - --accept-terms-of-use=true
+        - --datadir=/data/Goerli
+        - --jwt-secret=/root/jwt.hex
+        - --monitoring-host=0.0.0.0
+        - --execution-endpoint=http://execution-node:8551
+        - --genesis-state=/data/genesis.ssz
+        - --goerli
+        - --suggested-fee-recipient=0xd8aE79B8d6Fd0996ed58BA1d3fF6071aA96f1269
+        - --checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io
+        - --genesis-beacon-api-url=https://goerli.checkpoint-sync.ethpandaops.io
+        DependsOn:
+        - Condition: SUCCESS
+          ContainerName: Beaconnode_ResolvConf_InitContainer
+        Essential: true
+        Image: gcr.io/prysmaticlabs/prysm/beacon-chain:stable@sha256:f47d649e040517093bb1c56f1d953c92e0fb3e82bf6e23ea11560166e8e0ad73
+        LinuxParameters: {}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: goerli-test
+        MountPoints:
+        - ContainerPath: /data
+          SourceVolume: Data
+        - ContainerPath: /root
+          ReadOnly: true
+          SourceVolume: Secret
+        - ContainerPath: /usr/local/share/ca-certificates
+          ReadOnly: true
+          SourceVolume: Certs
+        Name: beacon-node
+        PortMappings:
+        - ContainerPort: 4000
+          HostPort: 4000
+          Protocol: tcp
+        - ContainerPort: 13000
+          HostPort: 13000
+          Protocol: tcp
+        - ContainerPort: 12000
+          HostPort: 12000
+          Protocol: udp
+      Cpu: "256"
+      ExecutionRoleArn:
+        Ref: BeaconnodeTaskExecutionRole
+      Family: goerli-test-beacon-node
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+      TaskRoleArn:
+        Ref: BeaconnodeTaskRole
+      Volumes:
+      - EFSVolumeConfiguration:
+          AuthorizationConfig:
+            AccessPointId:
+              Ref: DataAccessPoint
+            IAM: ENABLED
+          FilesystemId:
+            Ref: DataFilesystem
+          TransitEncryption: ENABLED
+        Name: Data
+      - EFSVolumeConfiguration:
+          AuthorizationConfig:
+            AccessPointId:
+              Ref: SecretAccessPoint
+            IAM: ENABLED
+          FilesystemId:
+            Ref: SecretFilesystem
+          TransitEncryption: ENABLED
+        Name: Secret
+      - EFSVolumeConfiguration:
+          AuthorizationConfig:
+            AccessPointId:
+              Ref: CertsAccessPoint
+            IAM: ENABLED
+          FilesystemId:
+            Ref: CertsFilesystem
+          TransitEncryption: ENABLED
+        Name: Certs
+    Type: AWS::ECS::TaskDefinition
+  BeaconnodeTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.service
+        Value: beacon-node
+    Type: AWS::IAM::Role
+  BeaconnodeTaskRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - elasticfilesystem:ClientMount
+            - elasticfilesystem:ClientWrite
+            - elasticfilesystem:ClientRootAccess
+            Condition:
+              StringEquals:
+                elasticfilesystem:AccessPointArn:
+                  Ref: DataAccessPoint
+            Effect: Allow
+            Principal: {}
+            Resource:
+            - Fn::GetAtt:
+              - DataFilesystem
+              - Arn
+          Version: 2012-10-17
+        PolicyName: BeaconnodeDataVolumeMountPolicy
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - elasticfilesystem:ClientMount
+            - elasticfilesystem:ClientWrite
+            - elasticfilesystem:ClientRootAccess
+            Condition:
+              StringEquals:
+                elasticfilesystem:AccessPointArn:
+                  Ref: SecretAccessPoint
+            Effect: Allow
+            Principal: {}
+            Resource:
+            - Fn::GetAtt:
+              - SecretFilesystem
+              - Arn
+          Version: 2012-10-17
+        PolicyName: BeaconnodeSecretVolumeMountPolicy
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - elasticfilesystem:ClientMount
+            - elasticfilesystem:ClientWrite
+            - elasticfilesystem:ClientRootAccess
+            Condition:
+              StringEquals:
+                elasticfilesystem:AccessPointArn:
+                  Ref: CertsAccessPoint
+            Effect: Allow
+            Principal: {}
+            Resource:
+            - Fn::GetAtt:
+              - CertsFilesystem
+              - Arn
+          Version: 2012-10-17
+        PolicyName: BeaconnodeCertsVolumeMountPolicy
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.service
+        Value: beacon-node
+    Type: AWS::IAM::Role
+  BeaconnodeUDP12000Listener:
+    Properties:
+      DefaultActions:
+      - ForwardConfig:
+          TargetGroups:
+          - TargetGroupArn:
+              Ref: BeaconnodeUDP12000TargetGroup
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 12000
+      Protocol: UDP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+  BeaconnodeUDP12000TargetGroup:
+    Properties:
+      Port: 12000
+      Protocol: UDP
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      TargetType: ip
+      VpcId: vpc-0b7985b42ef82c8cd
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  CertsAccessPoint:
+    Properties:
+      AccessPointTags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.volume
+        Value: Certs
+      - Key: Name
+        Value: goerli-test_Certs
+      FileSystemId:
+        Ref: CertsFilesystem
+    Type: AWS::EFS::AccessPoint
+  CertsFilesystem:
+    DeletionPolicy: Retain
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.volume
+        Value: Certs
+      - Key: Name
+        Value: goerli-test_Certs
+    Type: AWS::EFS::FileSystem
+  CertsNFSMountTargetOnSubnet00ce207e2616ae5a6:
+    Properties:
+      FileSystemId:
+        Ref: CertsFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-00ce207e2616ae5a6
+    Type: AWS::EFS::MountTarget
+  CertsNFSMountTargetOnSubnet05b5dc67930c020e7:
+    Properties:
+      FileSystemId:
+        Ref: CertsFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-05b5dc67930c020e7
+    Type: AWS::EFS::MountTarget
+  CertsNFSMountTargetOnSubnet028fe3013f4f9485a:
+    Properties:
+      FileSystemId:
+        Ref: CertsFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-028fe3013f4f9485a
+    Type: AWS::EFS::MountTarget
+  CertsNFSMountTargetOnSubnet0d8473699c0e27e4f:
+    Properties:
+      FileSystemId:
+        Ref: CertsFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0d8473699c0e27e4f
+    Type: AWS::EFS::MountTarget
+  CertsNFSMountTargetOnSubnet0e3140051101a020b:
+    Properties:
+      FileSystemId:
+        Ref: CertsFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0e3140051101a020b
+    Type: AWS::EFS::MountTarget
+  CertsNFSMountTargetOnSubnet0e8361006605c1812:
+    Properties:
+      FileSystemId:
+        Ref: CertsFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0e8361006605c1812
+    Type: AWS::EFS::MountTarget
+  CloudMap:
+    Properties:
+      Description: Service Map for Docker Compose project goerli-test
+      Name: goerli-test.local
+      Vpc: vpc-0b7985b42ef82c8cd
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+  Cluster:
+    Properties:
+      ClusterName: goerli-test
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+    Type: AWS::ECS::Cluster
+  DataAccessPoint:
+    Properties:
+      AccessPointTags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.volume
+        Value: Data
+      - Key: Name
+        Value: goerli-test_Data
+      FileSystemId:
+        Ref: DataFilesystem
+    Type: AWS::EFS::AccessPoint
+  DataFilesystem:
+    DeletionPolicy: Retain
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.volume
+        Value: Data
+      - Key: Name
+        Value: goerli-test_Data
+    Type: AWS::EFS::FileSystem
+  DataNFSMountTargetOnSubnet00ce207e2616ae5a6:
+    Properties:
+      FileSystemId:
+        Ref: DataFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-00ce207e2616ae5a6
+    Type: AWS::EFS::MountTarget
+  DataNFSMountTargetOnSubnet05b5dc67930c020e7:
+    Properties:
+      FileSystemId:
+        Ref: DataFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-05b5dc67930c020e7
+    Type: AWS::EFS::MountTarget
+  DataNFSMountTargetOnSubnet028fe3013f4f9485a:
+    Properties:
+      FileSystemId:
+        Ref: DataFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-028fe3013f4f9485a
+    Type: AWS::EFS::MountTarget
+  DataNFSMountTargetOnSubnet0d8473699c0e27e4f:
+    Properties:
+      FileSystemId:
+        Ref: DataFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0d8473699c0e27e4f
+    Type: AWS::EFS::MountTarget
+  DataNFSMountTargetOnSubnet0e3140051101a020b:
+    Properties:
+      FileSystemId:
+        Ref: DataFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0e3140051101a020b
+    Type: AWS::EFS::MountTarget
+  DataNFSMountTargetOnSubnet0e8361006605c1812:
+    Properties:
+      FileSystemId:
+        Ref: DataFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0e8361006605c1812
+    Type: AWS::EFS::MountTarget
+  Default4000Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: beacon-node:4000/tcp on default network
+      FromPort: 4000
+      GroupId:
+        Ref: DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 4000
+    Type: AWS::EC2::SecurityGroupIngress
+  Default8545Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: execution-node:8545/tcp on default network
+      FromPort: 8545
+      GroupId:
+        Ref: DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 8545
+    Type: AWS::EC2::SecurityGroupIngress
+  Default8551Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: execution-node:8551/tcp on default network
+      FromPort: 8551
+      GroupId:
+        Ref: DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 8551
+    Type: AWS::EC2::SecurityGroupIngress
+  Default12000Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: beacon-node:12000/udp on default network
+      FromPort: 12000
+      GroupId:
+        Ref: DefaultNetwork
+      IpProtocol: UDP
+      ToPort: 12000
+    Type: AWS::EC2::SecurityGroupIngress
+  Default13000Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: beacon-node:13000/tcp on default network
+      FromPort: 13000
+      GroupId:
+        Ref: DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 13000
+    Type: AWS::EC2::SecurityGroupIngress
+  Default30303Ingress:
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: execution-node:30303/tcp on default network
+      FromPort: 30303
+      GroupId:
+        Ref: DefaultNetwork
+      IpProtocol: TCP
+      ToPort: 30303
+    Type: AWS::EC2::SecurityGroupIngress
+  DefaultNetwork:
+    Properties:
+      GroupDescription: goerli-test Security Group for default network
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.network
+        Value: goerli-test_default
+      VpcId: vpc-0b7985b42ef82c8cd
+    Type: AWS::EC2::SecurityGroup
+  DefaultNetworkIngress:
+    Properties:
+      Description: Allow communication within network default
+      GroupId:
+        Ref: DefaultNetwork
+      IpProtocol: "-1"
+      SourceSecurityGroupId:
+        Ref: DefaultNetwork
+    Type: AWS::EC2::SecurityGroupIngress
+  ExecutionnodeService:
+    DependsOn:
+    - ExecutionnodeTCP8545Listener
+    - ExecutionnodeTCP30303Listener
+    - ExecutionnodeTCP8551Listener
+    - DataNFSMountTargetOnSubnet0e3140051101a020b
+    - DataNFSMountTargetOnSubnet00ce207e2616ae5a6
+    - DataNFSMountTargetOnSubnet0d8473699c0e27e4f
+    - DataNFSMountTargetOnSubnet0e8361006605c1812
+    - DataNFSMountTargetOnSubnet028fe3013f4f9485a
+    - DataNFSMountTargetOnSubnet05b5dc67930c020e7
+    - SecretNFSMountTargetOnSubnet0e3140051101a020b
+    - SecretNFSMountTargetOnSubnet00ce207e2616ae5a6
+    - SecretNFSMountTargetOnSubnet0d8473699c0e27e4f
+    - SecretNFSMountTargetOnSubnet0e8361006605c1812
+    - SecretNFSMountTargetOnSubnet028fe3013f4f9485a
+    - SecretNFSMountTargetOnSubnet05b5dc67930c020e7
+    Properties:
+      Cluster:
+        Fn::GetAtt:
+        - Cluster
+        - Arn
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+      - ContainerName: execution-node
+        ContainerPort: 8545
+        TargetGroupArn:
+          Ref: ExecutionnodeTCP8545TargetGroup
+      - ContainerName: execution-node
+        ContainerPort: 30303
+        TargetGroupArn:
+          Ref: ExecutionnodeTCP30303TargetGroup
+      - ContainerName: execution-node
+        ContainerPort: 8551
+        TargetGroupArn:
+          Ref: ExecutionnodeTCP8551TargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+          - Ref: DefaultNetwork
+          Subnets:
+          - subnet-0e3140051101a020b
+          - subnet-00ce207e2616ae5a6
+          - subnet-0d8473699c0e27e4f
+          - subnet-0e8361006605c1812
+          - subnet-028fe3013f4f9485a
+          - subnet-05b5dc67930c020e7
+      PlatformVersion: 1.4.0
+      PropagateTags: SERVICE
+      SchedulingStrategy: REPLICA
+      ServiceRegistries:
+      - RegistryArn:
+          Fn::GetAtt:
+          - ExecutionnodeServiceDiscoveryEntry
+          - Arn
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.service
+        Value: execution-node
+      TaskDefinition:
+        Ref: ExecutionnodeTaskDefinition
+    Type: AWS::ECS::Service
+  ExecutionnodeServiceDiscoveryEntry:
+    Properties:
+      Description: '"execution-node" service discovery entry in Cloud Map'
+      DnsConfig:
+        DnsRecords:
+        - TTL: 60
+          Type: A
+        RoutingPolicy: MULTIVALUE
+      HealthCheckCustomConfig:
+        FailureThreshold: 1
+      Name: execution-node
+      NamespaceId:
+        Ref: CloudMap
+    Type: AWS::ServiceDiscovery::Service
+  ExecutionnodeTCP8545Listener:
+    Properties:
+      DefaultActions:
+      - ForwardConfig:
+          TargetGroups:
+          - TargetGroupArn:
+              Ref: ExecutionnodeTCP8545TargetGroup
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 8545
+      Protocol: TCP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+  ExecutionnodeTCP8545TargetGroup:
+    Properties:
+      Port: 8545
+      Protocol: TCP
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      TargetType: ip
+      VpcId: vpc-0b7985b42ef82c8cd
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  ExecutionnodeTCP8551Listener:
+    Properties:
+      DefaultActions:
+      - ForwardConfig:
+          TargetGroups:
+          - TargetGroupArn:
+              Ref: ExecutionnodeTCP8551TargetGroup
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 8551
+      Protocol: TCP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+  ExecutionnodeTCP8551TargetGroup:
+    Properties:
+      Port: 8551
+      Protocol: TCP
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      TargetType: ip
+      VpcId: vpc-0b7985b42ef82c8cd
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  ExecutionnodeTCP30303Listener:
+    Properties:
+      DefaultActions:
+      - ForwardConfig:
+          TargetGroups:
+          - TargetGroupArn:
+              Ref: ExecutionnodeTCP30303TargetGroup
+        Type: forward
+      LoadBalancerArn:
+        Ref: LoadBalancer
+      Port: 30303
+      Protocol: TCP
+    Type: AWS::ElasticLoadBalancingV2::Listener
+  ExecutionnodeTCP30303TargetGroup:
+    Properties:
+      Port: 30303
+      Protocol: TCP
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      TargetType: ip
+      VpcId: vpc-0b7985b42ef82c8cd
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  ExecutionnodeTaskDefinition:
+    Properties:
+      ContainerDefinitions:
+      - Command:
+        - us-east-1.compute.internal
+        - goerli-test.local
+        Essential: false
+        Image: docker/ecs-searchdomain-sidecar:1.0
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: goerli-test
+        Name: Executionnode_ResolvConf_InitContainer
+      - Command:
+        - --goerli
+        - --datadir=/data/Goerli
+        - --http
+        - --http.addr=0.0.0.0
+        - --http.port=8545
+        - --http.vhosts
+        - '*'
+        - --http.corsdomain
+        - '*'
+        - --http.api
+        - eth,net,engine,admin
+        - --authrpc.jwtsecret
+        - /root/jwt.hex
+        - --authrpc.addr=0.0.0.0
+        - --authrpc.vhosts
+        - '*'
+        DependsOn:
+        - Condition: SUCCESS
+          ContainerName: Executionnode_ResolvConf_InitContainer
+        Essential: true
+        Image: docker.io/ethereum/client-go:stable@sha256:6d9e0437a7a05bf59580cee7be8807bd707c361f8322dd9ca603ce5d110f39e4
+        LinuxParameters: {}
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group:
+              Ref: LogGroup
+            awslogs-region:
+              Ref: AWS::Region
+            awslogs-stream-prefix: goerli-test
+        MountPoints:
+        - ContainerPath: /data
+          SourceVolume: Data
+        - ContainerPath: /root
+          ReadOnly: true
+          SourceVolume: Secret
+        Name: execution-node
+        PortMappings:
+        - ContainerPort: 8545
+          HostPort: 8545
+          Protocol: tcp
+        - ContainerPort: 30303
+          HostPort: 30303
+          Protocol: tcp
+        - ContainerPort: 8551
+          HostPort: 8551
+          Protocol: tcp
+      Cpu: "256"
+      ExecutionRoleArn:
+        Ref: ExecutionnodeTaskExecutionRole
+      Family: goerli-test-execution-node
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+      - FARGATE
+      TaskRoleArn:
+        Ref: ExecutionnodeTaskRole
+      Volumes:
+      - EFSVolumeConfiguration:
+          AuthorizationConfig:
+            AccessPointId:
+              Ref: DataAccessPoint
+            IAM: ENABLED
+          FilesystemId:
+            Ref: DataFilesystem
+          TransitEncryption: ENABLED
+        Name: Data
+      - EFSVolumeConfiguration:
+          AuthorizationConfig:
+            AccessPointId:
+              Ref: SecretAccessPoint
+            IAM: ENABLED
+          FilesystemId:
+            Ref: SecretFilesystem
+          TransitEncryption: ENABLED
+        Name: Secret
+    Type: AWS::ECS::TaskDefinition
+  ExecutionnodeTaskExecutionRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.service
+        Value: execution-node
+    Type: AWS::IAM::Role
+  ExecutionnodeTaskRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Condition: {}
+          Effect: Allow
+          Principal:
+            Service: ecs-tasks.amazonaws.com
+        Version: 2012-10-17
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - elasticfilesystem:ClientMount
+            - elasticfilesystem:ClientWrite
+            - elasticfilesystem:ClientRootAccess
+            Condition:
+              StringEquals:
+                elasticfilesystem:AccessPointArn:
+                  Ref: DataAccessPoint
+            Effect: Allow
+            Principal: {}
+            Resource:
+            - Fn::GetAtt:
+              - DataFilesystem
+              - Arn
+          Version: 2012-10-17
+        PolicyName: ExecutionnodeDataVolumeMountPolicy
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - elasticfilesystem:ClientMount
+            - elasticfilesystem:ClientWrite
+            - elasticfilesystem:ClientRootAccess
+            Condition:
+              StringEquals:
+                elasticfilesystem:AccessPointArn:
+                  Ref: SecretAccessPoint
+            Effect: Allow
+            Principal: {}
+            Resource:
+            - Fn::GetAtt:
+              - SecretFilesystem
+              - Arn
+          Version: 2012-10-17
+        PolicyName: ExecutionnodeSecretVolumeMountPolicy
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.service
+        Value: execution-node
+    Type: AWS::IAM::Role
+  LoadBalancer:
+    Properties:
+      LoadBalancerAttributes:
+      - Key: load_balancing.cross_zone.enabled
+        Value: "true"
+      Scheme: internet-facing
+      Subnets:
+      - subnet-0e3140051101a020b
+      - subnet-00ce207e2616ae5a6
+      - subnet-0d8473699c0e27e4f
+      - subnet-0e8361006605c1812
+      - subnet-028fe3013f4f9485a
+      - subnet-05b5dc67930c020e7
+      Tags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      Type: network
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+  LogGroup:
+    Properties:
+      LogGroupName: /docker-compose/goerli-test
+    Type: AWS::Logs::LogGroup
+  SecretAccessPoint:
+    Properties:
+      AccessPointTags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.volume
+        Value: Secret
+      - Key: Name
+        Value: goerli-test_Secret
+      FileSystemId:
+        Ref: SecretFilesystem
+    Type: AWS::EFS::AccessPoint
+  SecretFilesystem:
+    DeletionPolicy: Retain
+    Properties:
+      Encrypted: true
+      FileSystemTags:
+      - Key: com.docker.compose.project
+        Value: goerli-test
+      - Key: com.docker.compose.volume
+        Value: Secret
+      - Key: Name
+        Value: goerli-test_Secret
+    Type: AWS::EFS::FileSystem
+  SecretNFSMountTargetOnSubnet00ce207e2616ae5a6:
+    Properties:
+      FileSystemId:
+        Ref: SecretFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-00ce207e2616ae5a6
+    Type: AWS::EFS::MountTarget
+  SecretNFSMountTargetOnSubnet05b5dc67930c020e7:
+    Properties:
+      FileSystemId:
+        Ref: SecretFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-05b5dc67930c020e7
+    Type: AWS::EFS::MountTarget
+  SecretNFSMountTargetOnSubnet028fe3013f4f9485a:
+    Properties:
+      FileSystemId:
+        Ref: SecretFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-028fe3013f4f9485a
+    Type: AWS::EFS::MountTarget
+  SecretNFSMountTargetOnSubnet0d8473699c0e27e4f:
+    Properties:
+      FileSystemId:
+        Ref: SecretFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0d8473699c0e27e4f
+    Type: AWS::EFS::MountTarget
+  SecretNFSMountTargetOnSubnet0e3140051101a020b:
+    Properties:
+      FileSystemId:
+        Ref: SecretFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0e3140051101a020b
+    Type: AWS::EFS::MountTarget
+  SecretNFSMountTargetOnSubnet0e8361006605c1812:
+    Properties:
+      FileSystemId:
+        Ref: SecretFilesystem
+      SecurityGroups:
+      - Ref: DefaultNetwork
+      SubnetId: subnet-0e8361006605c1812
+    Type: AWS::EFS::MountTarget
