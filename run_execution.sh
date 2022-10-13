@@ -1,0 +1,12 @@
+geth \
+    --goerli \
+    --datadir="./data/Goerli" \
+    --http \
+    --http.addr=localhost \
+    --http.port=8545 \
+    --http.vhosts "*" \
+    --http.corsdomain "*" \
+    --http.api eth,net,engine,admin \
+    --authrpc.jwtsecret ./root/jwt.hex \
+    --authrpc.addr=localhost \
+    --authrpc.vhosts "*" \

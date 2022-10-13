@@ -1,0 +1,12 @@
+./scripts/prysm.sh \
+    beacon-chain \
+    --accept-terms-of-use=true \
+    --datadir="./data/Goerli" \
+    --jwt-secret="./root/jwt.hex" \
+    --monitoring-host=localhost \
+    --execution-endpoint=http://localhost:8551 \
+    --genesis-state="./data/genesis.ssz" \
+    --goerli \
+    --suggested-fee-recipient=0xd8aE79B8d6Fd0996ed58BA1d3fF6071aA96f1269 \
+    --checkpoint-sync-url=https://goerli.checkpoint-sync.ethpandaops.io \
+    --genesis-beacon-api-url=https://goerli.checkpoint-sync.ethpandaops.io \
